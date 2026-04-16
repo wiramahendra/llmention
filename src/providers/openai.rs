@@ -14,7 +14,10 @@ pub struct OpenAiProvider {
 impl OpenAiProvider {
     pub fn new(config: ProviderConfig) -> Self {
         Self {
-            client: Client::new(),
+            client: Client::builder()
+                .timeout(std::time::Duration::from_secs(config.timeout_secs))
+                .build()
+                .unwrap_or_default(),
             config,
         }
     }
@@ -26,11 +29,17 @@ impl LlmProvider for OpenAiProvider {
         "openai"
     }
 
-    async fn query(&self, prompt: &str) -> Result<String> {
+    async fn query_with_system(&self, system: Option<&str>, prompt: &str) -> Result<String> {
+        let mut messages = vec![];
+        if let Some(sys) = system {
+            messages.push(json!({"role": "system", "content": sys}));
+        }
+        messages.push(json!({"role": "user", "content": prompt}));
+
         let body = json!({
             "model": self.config.model,
             "temperature": self.config.temperature,
-            "messages": [{"role": "user", "content": prompt}]
+            "messages": messages
         });
 
         let resp = self
@@ -43,7 +52,7 @@ impl LlmProvider for OpenAiProvider {
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let text = resp.text().await?;
+            let text = resp.text().await.unwrap_or_default();
             bail!("OpenAI error {}: {}", status, text);
         }
 
