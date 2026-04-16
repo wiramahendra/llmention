@@ -1,12 +1,36 @@
 # LLMention
 
-**Track how often LLMs mention your brand — local-first, private, no SaaS.**
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Rust 1.75+](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org)
+[![Crates.io](https://img.shields.io/crates/v/llmention.svg)](https://crates.io/crates/llmention)
 
-Run `llmention audit myproject.com` weekly and instantly see:  
-*"Your brand appeared in 7/12 responses this week (↑42pp vs last run)"*  
-with concrete GEO hints like *"Add a comparison table"* or *"Move entity definition to the first paragraph"*.
+**Know exactly when and where LLMs mention your brand — local-first, private, no SaaS.**
 
-Built for indie hackers, solo founders, and open-source maintainers who want visibility insights without paying for a heavy dashboard or leaking prompts to a third-party service.
+Run `llmention audit myproject.com` weekly and instantly see:
+
+```
+  Mention rate   67%  (8/12 queries)  (↑ 24pp vs last run)
+  Citations      2
+  Models         2/3  (openai, anthropic)
+```
+
+…with concrete GEO tips like *"Add a comparison table"* or *"Move your entity definition to the first sentence"*.
+
+---
+
+## Why LLMention?
+
+- **Private.** Your prompts never leave your machine. No telemetry, no sign-up, no cloud DB.
+- **Unlimited.** Use your own API keys or run 100% locally with [Ollama](https://ollama.com) — no per-query pricing.
+- **Actionable.** Colored results table + rule-based GEO tips after every run. Not just numbers.
+
+|                  | LLMention          | Enterprise GEO tools |
+|------------------|--------------------|----------------------|
+| Price            | Free / open-source | $200–$2 000/mo       |
+| Data stays local | ✓                  | ✗ (their servers)    |
+| Custom prompts   | ✓ any file         | Limited templates    |
+| Ollama support   | ✓ fully local      | ✗                    |
+| Single binary    | ✓ 9.6 MB           | Web dashboard        |
 
 ---
 
@@ -19,55 +43,62 @@ cargo install --git https://github.com/schlep-engine/llmention
 # 2. Create config
 llmention config
 
-# 3. Edit ~/.llmention/config.toml — add at least one API key
-#    (or enable Ollama for fully local, free usage)
+# 3. Edit ~/.llmention/config.toml — add an API key or enable Ollama
+#    (see "Configuration" below)
 
-# 4. Run your first audit
+# 4. Verify your setup
+llmention doctor
+
+# 5. Run your first audit
 llmention audit myproject.com --niche "Rust CLI tool"
 ```
+
+> **Zero-cost option:** Install [Ollama](https://ollama.com), run `ollama pull llama3.2`,
+> set `enabled = true` under `[providers.ollama]` in config, and use
+> `llmention audit myproject.com --models ollama`.
 
 ---
 
 ## Commands
 
-### `audit` — Quick scan (recommended starting point)
+### `audit` — Quick scan (start here)
 
-Runs 12 smart default prompts across all configured models. No file needed.
+Generates 12 smart prompts and queries all enabled models. No file needed.
 
 ```bash
 llmention audit myproject.com
 llmention audit myproject.com --niche "observability tool" --competitor datadog
 llmention audit myproject.com --models openai,ollama
-llmention audit myproject.com --judge   # use local LLM for higher-accuracy parsing
+llmention audit myproject.com --judge     # local LLM re-evaluates each response
 ```
 
 ### `track` — Custom prompts
 
-Load your own prompt list from a file (.txt one-per-line or .json array).
+Load your own prompt list from a `.txt` (one per line) or `.json` array file.
 
 ```bash
-llmention track myproject.com
 llmention track myproject.com --prompts prompts.txt
 llmention track myproject.com --prompts prompts.json --models anthropic
 ```
 
-**Example `prompts.txt`:**
+**`prompts.txt` example:**
 ```
 what is myproject
 best lightweight monitoring tool 2026
 myproject vs prometheus
 is myproject production ready
+how to install myproject on Ubuntu
 ```
 
 ### `report` — History & trends
 
-Query the local SQLite database. Supports CSV and Markdown export.
+Query the local SQLite history. Supports CSV and Markdown export.
 
 ```bash
 llmention report myproject.com
 llmention report myproject.com --days 30
-llmention report myproject.com --days 30 --export csv > results.csv
-llmention report myproject.com --days 30 --export markdown > report.md
+llmention report myproject.com --export csv > results.csv
+llmention report myproject.com --export markdown > report.md
 ```
 
 ### `config` — Setup
@@ -78,16 +109,24 @@ Creates `~/.llmention/config.toml` with a commented example on first run.
 llmention config
 ```
 
+### `doctor` — Verify setup
+
+Checks config, database, cache directory, provider status, and Ollama connectivity.
+
+```bash
+llmention doctor
+```
+
 ---
 
 ## Example Output
 
 ```
-  Tracking myproject — 12 prompt(s) × 3 model(s)
+  Auditing myproject.com — 12 prompts × 3 model(s)
 
   ✓  [ 1/36] [openai] what is myproject
   –  [ 2/36] [openai] best developer tool 2026
-  ✓  [ 3/36] [openai] myproject review
+  ✓  [ 3/36] [anthropic] myproject review
   ...
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -98,31 +137,32 @@ llmention config
   Citations      2
   Models         2/3  (openai, anthropic)
 
-  ┌──────────┬──────────────────────────────┬───────────┬───────┬──────────┬───────────┐
-  │ Model    │ Prompt                       │ Mentioned │ Cited │ Position │ Sentiment │
-  ├──────────┼──────────────────────────────┼───────────┼───────┼──────────┼───────────┤
-  │ openai   │ what is myproject            │ Yes       │ Yes   │ Top      │ Positive  │
-  │ openai   │ best developer tool 2026     │ No        │ —     │ —        │ —         │
-  ...
+  ┌──────────┬────────────────────────────┬───────────┬───────┬──────────┬───────────┐
+  │ Model    │ Prompt                     │ Mentioned │ Cited │ Position │ Sentiment │
+  ├──────────┼────────────────────────────┼───────────┼───────┼──────────┼───────────┤
+  │ openai   │ what is myproject          │ Yes       │ Yes   │ Top      │ Positive  │
+  │ openai   │ best developer tool 2026   │ No        │ —     │ —        │ —         │
+  │ anthropic│ myproject review           │ Yes       │ —     │ Middle   │ Positive  │
+  └──────────┴────────────────────────────┴───────────┴───────┴──────────┴───────────┘
 
   Actionable GEO Tips:
   →  Moderate visibility. Lead every major doc section with the direct
      answer (inverted-pyramid). Publish explicit comparison pages
-     (e.g. 'MyTool vs Competitor') — they rank well in LLM citations.
+     (e.g. 'MyProject vs Competitor') — they rank well in LLM citations.
 ```
 
 ---
 
 ## Configuration
 
-Config file lives at `~/.llmention/config.toml`. Run `llmention config` to create it.
+Config file: `~/.llmention/config.toml` — run `llmention config` to create it.
 
 ```toml
 [providers.openai]
 api_key     = "sk-..."
 model       = "gpt-4o-mini"
 enabled     = true
-temperature = 0          # deterministic results (recommended)
+temperature = 0          # deterministic, cacheable (recommended)
 
 [providers.anthropic]
 api_key     = "sk-ant-..."
@@ -135,69 +175,96 @@ api_key     = "xai-..."
 model       = "grok-2-latest"
 enabled     = false
 
+# Local, free, unlimited — install: https://ollama.com
 [providers.ollama]
 base_url  = "http://localhost:11434"
 model     = "llama3.2"
-enabled   = false        # free, fully local — install: https://ollama.com
+enabled   = false
 
-# Optional: LLM-as-judge for higher-accuracy mention detection
+# LLM-as-judge: re-evaluates each response for higher-accuracy parsing.
+# Enable per-run with: --judge flag
 [judge]
 enabled   = false
 base_url  = "http://localhost:11434"
 model     = "llama3.2"
 
 [defaults]
-days        = 7
-concurrency = 5
+days        = 7    # default window for `report`
+concurrency = 5    # max parallel API calls
 ```
-
-### Ollama (local, free, unlimited)
-
-```bash
-# Install Ollama: https://ollama.com
-ollama pull llama3.2
-# Set enabled = true in [providers.ollama]
-llmention audit myproject.com --models ollama
-```
-
----
-
-## Why LLMention?
-
-| | LLMention | Enterprise GEO tools |
-|---|---|---|
-| Price | Free / open-source | $200–$2000/mo |
-| Privacy | 100% local | Prompts sent to their servers |
-| Rate limits | Your API keys | Platform quotas |
-| Custom prompts | ✓ Any file | Limited templates |
-| Ollama support | ✓ Fully local | ✗ |
-| Data ownership | SQLite on your disk | Their cloud DB |
 
 ---
 
 ## How It Works
 
-1. **Prompts** — LLMention sends each prompt to every configured LLM provider in parallel (up to 5 concurrent, respecting rate limits).
-2. **Parsing** — Rule-based detection checks for domain mentions, links, position in the response, and sentiment. Optionally upgrade to LLM-as-judge with `--judge`.
-3. **Cache** — Responses are cached for 24h by `SHA-256(domain|model|prompt|date)` so re-runs are instant.
-4. **Storage** — Every result is saved to `~/.llmention/mentions.db` (SQLite). Records older than 90 days are pruned automatically.
-5. **Report** — Terminal table + actionable GEO tips based on your results.
+1. **Prompts** — Each prompt is sent to every enabled provider concurrently (semaphore-limited).
+2. **Parsing** — Detects domain mentions, link citations, position in response (Top/Middle/Bottom), and sentiment via keyword heuristics. Optionally upgrade accuracy with `--judge` (re-evaluates via a local model returning structured JSON).
+3. **Cache** — Responses cached for 24 h by `SHA-256(domain|model|prompt|date)`. Re-runs are instant.
+4. **Storage** — Every result saved to `~/.llmention/mentions.db` (SQLite). Records older than 90 days are pruned automatically.
+5. **Report** — Colored terminal table, trend vs. previous run, and actionable GEO tips.
 
 ---
 
 ## Installation
 
-**From source (stable Rust required):**
+**Cargo (recommended):**
+```bash
+cargo install --git https://github.com/schlep-engine/llmention
+```
+
+**From source:**
 ```bash
 git clone https://github.com/schlep-engine/llmention
 cd llmention
 cargo build --release
-cp target/release/llmention ~/.local/bin/
+# Binary at target/release/llmention (9.6 MB)
 ```
 
-**Via cargo install:**
+**Reduce binary size (optional):**
 ```bash
-cargo install --git https://github.com/schlep-engine/llmention
+# Strip debug symbols
+strip target/release/llmention
+
+# Or compress with UPX (https://upx.github.io)
+upx --best target/release/llmention
+```
+
+---
+
+## Roadmap
+
+| Phase | Feature | Status |
+|-------|---------|--------|
+| 1 — MVP | `audit`, `track`, `report`, `config`, `doctor` | ✅ Done |
+| 2 — Generate | `llmention generate` — produce GEO-optimized markdown for any prompt | Planned |
+| 3 — GUI | Thin Tauri desktop app wrapping the same SQLite store | Planned |
+| 4 — Web | Optional self-hosted dashboard | Planned |
+
+---
+
+## Contributing
+
+Contributions welcome. The codebase is small and modular:
+
+```
+src/
+  bin/llmention.rs   CLI entrypoint (clap)
+  config.rs          ~/.llmention/config.toml loader
+  providers/         LlmProvider trait + OpenAI, Anthropic, xAI, Ollama
+  tracker.rs         Parallel query orchestrator
+  parser.rs          Rule-based mention/citation/sentiment detection
+  cache.rs           24-hour file cache (SHA-256 keyed)
+  storage.rs         SQLite persistence
+  report.rs          Terminal output + CSV/Markdown export
+  types.rs           Shared types (MentionResult, TrackSummary, …)
+```
+
+To add a new provider: implement `LlmProvider` in `src/providers/`, add a config field in `src/config.rs`, and wire it up in `tracker::build_providers`.
+
+```bash
+cargo test        # unit tests
+cargo clippy      # lints
+cargo build --release
 ```
 
 ---
