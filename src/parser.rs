@@ -10,10 +10,15 @@ pub struct ParseResult {
     pub snippet: Option<String>,
 }
 
+/// Rule-based parser. Detects domain mentions, link citations, rough position,
+/// and sentiment via keyword heuristics.
+///
+/// Future: replace or supplement with an LLM-as-judge call when high-confidence
+/// verdicts are needed. Prompt template lives in the project spec under
+/// `llm_as_judge_prompt_for_parser_fallback`.
 pub fn parse_response(domain: &str, response: &str) -> ParseResult {
     let response_lower = response.to_lowercase();
     let domain_lower = domain.to_lowercase();
-
     let domain_base = strip_tld(&domain_lower);
 
     let mentioned = response_lower.contains(&domain_lower)
@@ -40,17 +45,11 @@ pub fn parse_response(domain: &str, response: &str) -> ParseResult {
 
     let snippet = mentioned.then(|| extract_snippet(domain_base, response)).flatten();
 
-    ParseResult {
-        mentioned,
-        cited,
-        position,
-        sentiment,
-        snippet,
-    }
+    ParseResult { mentioned, cited, position, sentiment, snippet }
 }
 
 fn strip_tld(domain: &str) -> &str {
-    for tld in &[".com", ".io", ".dev", ".net", ".org", ".app"] {
+    for tld in &[".com", ".io", ".dev", ".net", ".org", ".app", ".ai", ".co"] {
         if let Some(s) = domain.strip_suffix(tld) {
             return s;
         }
@@ -78,15 +77,15 @@ fn detect_position(domain_base: &str, response_lower: &str) -> Position {
 }
 
 fn detect_sentiment(domain_base: &str, response_lower: &str) -> Sentiment {
-    let sentences: Vec<&str> = response_lower
+    let relevant: Vec<&str> = response_lower
         .split(['.', '!', '?', '\n'])
         .filter(|s| s.contains(domain_base))
         .collect();
 
-    let context: String = if sentences.is_empty() {
-        response_lower[..response_lower.len().min(500)].to_string()
+    let context: String = if relevant.is_empty() {
+        response_lower[..response_lower.len().min(600)].to_string()
     } else {
-        sentences.join(" ")
+        relevant.join(" ")
     };
 
     const POS: &[&str] = &[
@@ -108,6 +107,10 @@ fn detect_sentiment(domain_base: &str, response_lower: &str) -> Sentiment {
         "well-known",
         "leading",
         "notable",
+        "solid",
+        "mature",
+        "active",
+        "maintained",
     ];
     const NEG: &[&str] = &[
         "avoid",
@@ -123,6 +126,9 @@ fn detect_sentiment(domain_base: &str, response_lower: &str) -> Sentiment {
         "outdated",
         "unmaintained",
         "not recommended",
+        "limited",
+        "lack",
+        "missing",
     ];
 
     let pos = POS.iter().filter(|w| context.contains(**w)).count();
@@ -139,10 +145,10 @@ fn extract_snippet(domain_base: &str, response: &str) -> Option<String> {
     let lower = response.to_lowercase();
     let idx = lower.find(domain_base)?;
     let start = idx.saturating_sub(80);
-    let end = (idx + domain_base.len() + 80).min(response.len());
+    let end = (idx + domain_base.len() + 120).min(response.len());
     let raw = response[start..end].trim();
-    Some(if raw.len() > 160 {
-        format!("{}…", &raw[..160])
+    Some(if raw.len() > 200 {
+        format!("{}…", &raw[..199])
     } else {
         raw.to_string()
     })
