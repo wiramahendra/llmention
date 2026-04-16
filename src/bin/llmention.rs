@@ -11,16 +11,26 @@ use llmention::{
     tracker::{self, TrackOptions},
 };
 
+const BANNER: &str = r#"
+  ██╗     ██╗     ███╗   ███╗███████╗███╗   ██╗████████╗██╗ ██████╗ ███╗   ██╗
+  ██║     ██║     ████╗ ████║██╔════╝████╗  ██║╚══██╔══╝██║██╔═══██╗████╗  ██║
+  ██║     ██║     ██╔████╔██║█████╗  ██╔██╗ ██║   ██║   ██║██║   ██║██╔██╗ ██║
+  ██║     ██║     ██║╚██╔╝██║██╔══╝  ██║╚██╗██║   ██║   ██║██║   ██║██║╚██╗██║
+  ███████╗███████╗██║ ╚═╝ ██║███████╗██║ ╚████║   ██║   ██║╚██████╔╝██║ ╚████║
+  ╚══════╝╚══════╝╚═╝     ╚═╝╚══════╝╚═╝  ╚═══╝   ╚═╝   ╚═╝ ╚═════╝ ╚═╝  ╚═══╝
+"#;
+
 #[derive(Parser)]
 #[command(
     name = "llmention",
     about = "Track how often LLMs mention your brand — local, private, no SaaS",
     long_about = "LLMention queries LLM providers with prompts about your brand and\n\
-                  records whether and how they mention it. All data stays on your disk.\n\n\
+                  records whether and how they mention it. All data stays on disk.\n\n\
                   Quick start:\n  \
-                  llmention config                         # create config file\n  \
-                  llmention audit myproject.com            # run a quick scan\n  \
-                  llmention report myproject.com --days 7  # view history",
+                  llmention config                          # create config\n  \
+                  llmention audit myproject.com             # quick scan\n  \
+                  llmention report myproject.com --days 30  # view trends\n  \
+                  llmention doctor                          # verify setup",
     version,
     arg_required_else_help = true
 )]
@@ -49,23 +59,24 @@ enum Commands {
     ///
     /// Examples:
     ///   llmention track myproject.com
-    ///   llmention track myproject.com --prompts prompts.txt
-    ///   llmention track myproject.com --models openai,ollama --judge
+    ///   llmention track myproject.com --prompts prompts.txt --models openai,ollama
+    ///   llmention track myproject.com --judge
     Track {
         /// Domain or brand to track (e.g. myproject.com)
         domain: String,
         /// Path to prompts file (.txt one-per-line or .json array)
         #[arg(long, short)]
         prompts: Option<PathBuf>,
-        /// Re-evaluate responses with a local LLM judge for higher accuracy
+        /// Re-evaluate each response with a local LLM for higher-accuracy parsing
         #[arg(long)]
         judge: bool,
     },
-    /// Quick audit with 12 smart default prompts (no file needed)
+    /// Quick audit using 12 smart default prompts — no file needed
     ///
     /// Examples:
     ///   llmention audit myproject.com
     ///   llmention audit myproject.com --niche "Rust CLI tool" --competitor ripgrep
+    ///   llmention audit myproject.com --models ollama   # fully local, free
     Audit {
         /// Domain or brand to audit
         domain: String,
@@ -75,28 +86,31 @@ enum Commands {
         /// Main competitor for comparison prompts
         #[arg(long)]
         competitor: Option<String>,
-        /// Re-evaluate responses with a local LLM judge for higher accuracy
+        /// Re-evaluate each response with a local LLM for higher-accuracy parsing
         #[arg(long)]
         judge: bool,
     },
-    /// Show mention history and trends from local SQLite database
+    /// Show mention history and trends from the local database
     ///
     /// Examples:
     ///   llmention report myproject.com
     ///   llmention report myproject.com --days 30
-    ///   llmention report myproject.com --days 30 --export csv > results.csv
+    ///   llmention report myproject.com --export csv > results.csv
+    ///   llmention report myproject.com --export markdown > report.md
     Report {
         /// Domain or brand
         domain: String,
-        /// Number of past days to include [default: 7]
+        /// Number of past days to include
         #[arg(long, short, default_value = "7")]
         days: u32,
-        /// Export format instead of terminal display
+        /// Export as structured format instead of terminal table
         #[arg(long, value_enum)]
         export: Option<ExportFormat>,
     },
-    /// Show config path, create example config, and display setup instructions
+    /// Create config file and show setup instructions
     Config,
+    /// Check your setup: config, providers, Ollama connectivity
+    Doctor,
 }
 
 #[tokio::main]
@@ -104,23 +118,35 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let config = Config::load()?;
     let (base_dir, is_first_run) = Config::ensure_dir()?;
-    let storage = Storage::open(&base_dir)?;
-    let cache = Cache::new(&base_dir)?;
 
     if is_first_run {
         print_welcome();
+        // Bootstrap config on very first run
+        let path = llmention::config::config_path();
+        if !path.exists() {
+            std::fs::write(&path, EXAMPLE_CONFIG)?;
+            println!(
+                "  {} Config created at {} — edit it with your API keys,",
+                "✅".green(),
+                path.display().to_string().cyan()
+            );
+            println!("     or set {} to use Ollama for free.\n", "enabled = true".cyan());
+        }
     }
+
+    let storage = Storage::open(&base_dir)?;
+    let cache = Cache::new(&base_dir)?;
 
     match cli.command {
         Commands::Track { domain, prompts, judge } => {
             let providers = tracker::build_providers_filtered(&config, cli.models.as_deref());
             if providers.is_empty() {
-                bail!(
-                    "No providers enabled.\n  Run {} to set up your API keys.",
-                    "llmention config".cyan()
-                );
+                no_providers_error();
             }
             let prompts = load_prompts(prompts, &domain)?;
+            if prompts.is_empty() {
+                bail!("Prompts file is empty. Add at least one prompt (one per line).");
+            }
             let judge_provider = build_judge_provider(judge, &config);
 
             println!(
@@ -147,10 +173,7 @@ async fn main() -> Result<()> {
         Commands::Audit { domain, niche, competitor, judge } => {
             let providers = tracker::build_providers_filtered(&config, cli.models.as_deref());
             if providers.is_empty() {
-                bail!(
-                    "No providers enabled.\n  Run {} to set up your API keys.",
-                    "llmention config".cyan()
-                );
+                no_providers_error();
             }
             let prompts = audit_prompts(&domain, niche.as_deref(), competitor.as_deref());
             let judge_provider = build_judge_provider(judge, &config);
@@ -180,40 +203,52 @@ async fn main() -> Result<()> {
             let results = storage.query_domain(&domain, days)?;
             match export {
                 Some(ExportFormat::Csv) => print!("{}", report::export_csv(&results)),
-                Some(ExportFormat::Markdown) => print!("{}", report::export_markdown(&results, &domain)),
+                Some(ExportFormat::Markdown) => {
+                    print!("{}", report::export_markdown(&results, &domain))
+                }
                 None => report::print_trend_report(&domain, &results, days),
             }
         }
 
         Commands::Config => run_config_command()?,
+
+        Commands::Doctor => run_doctor(&config, &base_dir).await?,
     }
 
     Ok(())
 }
 
+// ── helpers ──────────────────────────────────────────────────────────────────
+
 fn print_welcome() {
-    println!();
-    println!("{}", "━".repeat(60).dimmed());
-    println!(
-        "  {}  Welcome to LLMention!",
-        "★".yellow().bold()
-    );
-    println!("{}", "━".repeat(60).dimmed());
-    println!();
+    println!("{}", BANNER.cyan().dimmed());
+    println!("{}", "━".repeat(62).dimmed());
     println!("  Track how often LLMs mention your brand — privately,");
     println!("  locally, and without paying for a SaaS dashboard.");
+    println!("{}", "━".repeat(62).dimmed());
     println!();
-    println!("  {}", "Next steps:".bold());
-    println!(
-        "    1. Edit {}",
+}
+
+fn no_providers_error() -> ! {
+    eprintln!(
+        "\n  {} No providers are enabled.\n",
+        "Error:".red().bold()
+    );
+    eprintln!("  Options:");
+    eprintln!(
+        "    • Add an API key in {}",
         "~/.llmention/config.toml".cyan()
     );
-    println!("    2. Add at least one API key (or enable Ollama)");
-    println!(
-        "    3. Run {}",
-        "llmention audit yourdomain.com".cyan()
+    eprintln!(
+        "    • Or run {} and set {} for free local inference",
+        "ollama serve".cyan(),
+        "enabled = true".cyan()
     );
-    println!();
+    eprintln!(
+        "\n  Run {} to see setup instructions.\n",
+        "llmention config".cyan()
+    );
+    std::process::exit(1);
 }
 
 fn run_config_command() -> Result<()> {
@@ -222,40 +257,180 @@ fn run_config_command() -> Result<()> {
 
     println!();
     println!("{}", "LLMention — Configuration".bold());
-    println!("{}", "━".repeat(54).dimmed());
+    println!("{}", "━".repeat(56).dimmed());
     println!();
     println!("  Config dir   {}", dir.display().to_string().cyan());
     println!("  Config file  {}", path.display().to_string().cyan());
     println!();
 
     if path.exists() {
-        println!("  {} Config file already exists.", "✓".green());
-        println!("  Edit it to add or update API keys.");
+        println!(
+            "  {} Config already exists — edit it to add or update keys.",
+            "✓".green()
+        );
     } else {
         std::fs::write(&path, EXAMPLE_CONFIG)?;
         println!(
             "  {} Created {}",
-            "✓".green(),
+            "✅".green(),
             path.display().to_string().cyan()
         );
-        println!("  Add your API keys, then run:");
-        println!("    {}", "llmention audit yourdomain.com".cyan());
+        println!("     Edit it with your API keys, or set");
+        println!(
+            "     {} under [providers.ollama] for zero-cost local inference.",
+            "enabled = true".cyan()
+        );
     }
 
     println!();
     println!("  {}", "Supported providers:".bold());
-    println!("    {}  openai    gpt-4o-mini, gpt-4o …", "·".dimmed());
-    println!("    {}  anthropic claude-3-5-haiku, claude-3-5-sonnet …", "·".dimmed());
-    println!("    {}  xai       grok-2-latest (x.ai)", "·".dimmed());
-    println!("    {}  ollama    llama3.2, mistral, phi4 … (local, free)", "·".dimmed());
+    println!("    {}  openai    — gpt-4o-mini, gpt-4o, …", "·".dimmed());
+    println!("    {}  anthropic — claude-3-5-haiku, claude-3-5-sonnet, …", "·".dimmed());
+    println!("    {}  xai       — grok-2-latest  (x.ai)", "·".dimmed());
+    println!(
+        "    {}  ollama    — llama3.2, mistral, phi4, …  (local, free)",
+        "·".dimmed()
+    );
     println!();
     println!(
         "  {}  Set {} for deterministic, cacheable results.",
         "Tip".yellow().bold(),
         "temperature = 0".cyan()
     );
+    println!(
+        "  {}  Run {} after editing to verify your setup.",
+        "Tip".yellow().bold(),
+        "llmention doctor".cyan()
+    );
     println!();
     Ok(())
+}
+
+async fn run_doctor(config: &Config, base_dir: &PathBuf) -> Result<()> {
+    println!();
+    println!("{}", "LLMention Doctor".bold());
+    println!("{}", "━".repeat(56).dimmed());
+    println!();
+
+    // ── Paths ──
+    let config_path = llmention::config::config_path();
+    check("Config file  ", config_path.exists(), &config_path.display().to_string());
+    check("Cache dir    ", base_dir.join("cache").exists(), "~/.llmention/cache/");
+    check("Database     ", base_dir.join("mentions.db").exists(), "~/.llmention/mentions.db");
+
+    println!();
+    println!("  {}", "Providers:".bold());
+
+    let mut any_enabled = false;
+
+    // OpenAI
+    match &config.providers.openai {
+        Some(c) if c.enabled => {
+            any_enabled = true;
+            println!("  {}  openai    {} ({})", "✓".green(), "enabled".green(), c.model.dimmed());
+        }
+        Some(_) => println!("  {}  openai    disabled", "–".dimmed()),
+        None => println!("  {}  openai    not configured", "–".dimmed()),
+    }
+
+    // Anthropic
+    match &config.providers.anthropic {
+        Some(c) if c.enabled => {
+            any_enabled = true;
+            println!("  {}  anthropic {} ({})", "✓".green(), "enabled".green(), c.model.dimmed());
+        }
+        Some(_) => println!("  {}  anthropic disabled", "–".dimmed()),
+        None => println!("  {}  anthropic not configured", "–".dimmed()),
+    }
+
+    // xAI
+    match &config.providers.xai {
+        Some(c) if c.enabled => {
+            any_enabled = true;
+            println!("  {}  xai       {} ({})", "✓".green(), "enabled".green(), c.model.dimmed());
+        }
+        Some(_) => println!("  {}  xai       disabled", "–".dimmed()),
+        None => println!("  {}  xai       not configured", "–".dimmed()),
+    }
+
+    // Ollama — do a live connectivity check
+    match &config.providers.ollama {
+        Some(c) if c.enabled => {
+            any_enabled = true;
+            let reachable = ping_ollama(&c.base_url).await;
+            if reachable {
+                println!(
+                    "  {}  ollama    {} ({}, {})",
+                    "✓".green(),
+                    "enabled".green(),
+                    c.model.dimmed(),
+                    "reachable".green()
+                );
+            } else {
+                println!(
+                    "  {}  ollama    {} — {} is not responding",
+                    "!".yellow().bold(),
+                    "enabled but unreachable".yellow(),
+                    c.base_url.cyan()
+                );
+                println!(
+                    "       Start it with: {}",
+                    "ollama serve".cyan()
+                );
+            }
+        }
+        Some(c) => {
+            // Check reachability even when disabled, to help user enable it
+            let reachable = ping_ollama(&c.base_url).await;
+            if reachable {
+                println!(
+                    "  {}  ollama    disabled (but {} — set {} to use it)",
+                    "–".dimmed(),
+                    "running".green(),
+                    "enabled = true".cyan()
+                );
+            } else {
+                println!("  {}  ollama    disabled", "–".dimmed());
+            }
+        }
+        None => println!("  {}  ollama    not configured", "–".dimmed()),
+    }
+
+    println!();
+    if any_enabled {
+        println!(
+            "  {} At least one provider is active. Try: {}",
+            "✓".green().bold(),
+            "llmention audit myproject.com".cyan()
+        );
+    } else {
+        println!(
+            "  {} No providers enabled. Edit {} to get started.",
+            "✗".red().bold(),
+            "~/.llmention/config.toml".cyan()
+        );
+    }
+    println!();
+    Ok(())
+}
+
+async fn ping_ollama(base_url: &str) -> bool {
+    let url = format!("{}/api/tags", base_url);
+    reqwest::Client::new()
+        .get(&url)
+        .timeout(std::time::Duration::from_secs(3))
+        .send()
+        .await
+        .map(|r| r.status().is_success())
+        .unwrap_or(false)
+}
+
+fn check(label: &str, ok: bool, detail: &str) {
+    if ok {
+        println!("  {}  {}  {}", "✓".green(), label, detail.dimmed());
+    } else {
+        println!("  {}  {}  {} (missing)", "✗".red(), label, detail.dimmed());
+    }
 }
 
 fn build_judge_provider(
@@ -280,9 +455,11 @@ fn fetch_prev_rate(storage: &Storage, domain: &str) -> Option<f64> {
 fn load_prompts(path: Option<PathBuf>, domain: &str) -> Result<Vec<String>> {
     match path {
         Some(p) => {
-            let contents = std::fs::read_to_string(&p)?;
+            let contents = std::fs::read_to_string(&p)
+                .map_err(|e| anyhow::anyhow!("Cannot read prompts file {}: {}", p.display(), e))?;
             if p.extension().map_or(false, |e| e == "json") {
-                Ok(serde_json::from_str(&contents)?)
+                serde_json::from_str(&contents)
+                    .map_err(|e| anyhow::anyhow!("Invalid JSON in {}: {}", p.display(), e))
             } else {
                 Ok(contents
                     .lines()
@@ -297,8 +474,12 @@ fn load_prompts(path: Option<PathBuf>, domain: &str) -> Result<Vec<String>> {
 
 fn audit_prompts(domain: &str, niche: Option<&str>, competitor: Option<&str>) -> Vec<String> {
     let brand = domain
-        .trim_end_matches(".com").trim_end_matches(".io").trim_end_matches(".dev")
-        .trim_end_matches(".app").trim_end_matches(".net").trim_end_matches(".org")
+        .trim_end_matches(".com")
+        .trim_end_matches(".io")
+        .trim_end_matches(".dev")
+        .trim_end_matches(".app")
+        .trim_end_matches(".net")
+        .trim_end_matches(".org")
         .trim_end_matches(".ai");
 
     let niche = niche.unwrap_or("developer tool");
