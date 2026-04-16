@@ -27,6 +27,8 @@ pub struct ProviderConfig {
     pub enabled: bool,
     #[serde(default)]
     pub temperature: f32,
+    #[serde(default = "default_timeout")]
+    pub timeout_secs: u64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -57,18 +59,11 @@ impl Default for DefaultsConfig {
     }
 }
 
-fn default_true() -> bool {
-    true
-}
-fn default_ollama_url() -> String {
-    "http://localhost:11434".to_string()
-}
-fn default_days() -> u32 {
-    7
-}
-fn default_concurrency() -> usize {
-    4
-}
+fn default_true() -> bool { true }
+fn default_ollama_url() -> String { "http://localhost:11434".to_string() }
+fn default_days() -> u32 { 7 }
+fn default_concurrency() -> usize { 5 }
+fn default_timeout() -> u64 { 30 }
 
 impl Config {
     pub fn load() -> Result<Self> {
@@ -86,8 +81,46 @@ impl Config {
             .unwrap_or_else(|| PathBuf::from("."))
             .join(".llmention")
     }
+
+    pub fn ensure_dir() -> Result<PathBuf> {
+        let dir = Self::config_dir();
+        std::fs::create_dir_all(&dir)
+            .with_context(|| format!("Failed to create config dir {}", dir.display()))?;
+        Ok(dir)
+    }
 }
 
 pub fn config_path() -> PathBuf {
     Config::config_dir().join("config.toml")
 }
+
+pub const EXAMPLE_CONFIG: &str = r#"# LLMention configuration
+# Place this file at ~/.llmention/config.toml
+
+[providers.openai]
+api_key   = "sk-..."
+model     = "gpt-4o-mini"
+enabled   = true
+temperature = 0
+
+[providers.anthropic]
+api_key   = "sk-ant-..."
+model     = "claude-3-5-haiku-20241022"
+enabled   = true
+temperature = 0
+
+[providers.xai]
+api_key   = "xai-..."
+model     = "grok-2-latest"
+enabled   = false
+temperature = 0
+
+[providers.ollama]
+base_url  = "http://localhost:11434"
+model     = "llama3.2"
+enabled   = false
+
+[defaults]
+days        = 7
+concurrency = 5
+"#;
