@@ -2,11 +2,13 @@
 name = "llmention"
 version = "0.1.0"
 edition = "2021"
-description = "Track how often LLMs mention your brand — local-first, private, fast"
+description = "Track how often LLMs mention your brand — local-first, private, no SaaS"
 license = "MIT"
-keywords = ["geo", "llm", "visibility", "cli", "rust"]
-categories = ["command-line-utilities", "web-programming"]
+keywords = ["geo", "llm", "visibility", "seo", "cli"]
+categories = ["command-line-utilities", "development-tools"]
 repository = "https://github.com/schlep-engine/llmention"
+homepage = "https://github.com/schlep-engine/llmention"
+documentation = "https://github.com/schlep-engine/llmention#readme"
 readme = "README.md"
 
 [[bin]]
