@@ -6,9 +6,9 @@ description = "Track how often LLMs mention your brand — local-first, private,
 license = "MIT"
 keywords = ["geo", "llm", "visibility", "seo", "cli"]
 categories = ["command-line-utilities", "development-tools"]
-repository = "https://github.com/schlep-engine/llmention"
-homepage = "https://github.com/schlep-engine/llmention"
-documentation = "https://github.com/schlep-engine/llmention#readme"
+repository = "https://github.com/wiramahendra/llMention"
+homepage = "https://github.com/wiramahendra/llMention"
+documentation = "https://github.com/wiramahendra/llMention#readme"
 readme = "README.md"
 
 [[bin]]
