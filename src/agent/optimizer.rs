@@ -26,6 +26,10 @@ pub struct OptimizeOptions {
     pub dry_run: bool,
     pub verbose: bool,
     pub quiet: bool,
+    /// Optional plugin template override for the generate step.
+    pub generate_template_override: Option<String>,
+    /// Optional plugin template override for the discover step (system prompt).
+    pub discover_template_override: Option<String>,
 }
 
 pub async fn optimize(
@@ -36,9 +40,14 @@ pub async fn optimize(
 ) -> Result<OptimizationPlan> {
     // ── Step 1: Discover high-intent prompts ────────────────────────────────
     print_step(1, 5, "Discovering high-intent prompts…");
-    let discovered =
-        prompt_discovery::discover_with_providers(&opts.domain, &opts.niche, &opts.competitors, providers)
-            .await;
+    let discovered = prompt_discovery::discover_with_providers(
+        &opts.domain,
+        &opts.niche,
+        &opts.competitors,
+        providers,
+        opts.discover_template_override.as_deref(),
+    )
+    .await;
     let prompt_count = discovered.len().min(15);
     let audit_prompts = discovered[..prompt_count].to_vec();
     eprintln!("       → Found {} prompts", prompt_count);
@@ -85,6 +94,7 @@ pub async fn optimize(
             about: format!("{} — {}", opts.domain, opts.niche),
             niche: opts.niche.clone(),
             verbose: false,
+            system_prompt_override: opts.generate_template_override.clone(),
         };
         match generator::generate(&gen_opts, providers).await {
             Ok(results) if !results.is_empty() => {
