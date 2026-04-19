@@ -122,9 +122,18 @@ function Onboarding({ onDismiss }: { onDismiss: () => void }) {
       </div>
 
       <p style={onboardingStyles.muted}>
-        Or use Ollama for free local inference — set <code style={onboardingStyles.cmd}>enabled = true</code> under <code style={onboardingStyles.cmd}>[providers.ollama]</code>
+        Free option: <code style={onboardingStyles.cmd}>ollama pull llama3.2</code> then set{" "}
+        <code style={onboardingStyles.cmd}>enabled = true</code> under{" "}
+        <code style={onboardingStyles.cmd}>[providers.ollama]</code> in config.
       </p>
-      
+
+      <p style={{ ...onboardingStyles.muted, maxWidth: 560, marginTop: 12, lineHeight: 1.5 }}>
+        <strong style={{ color: "#e6edf3" }}>Honest note:</strong>{" "}
+        LLMention improves your <em>probability</em> of being cited by LLMs —
+        it does not guarantee it. Results depend on content quality and model behavior.
+        Audit regularly and iterate.
+      </p>
+
       <button style={onboardingStyles.btn} onClick={onDismiss}>
         Get Started
       </button>
