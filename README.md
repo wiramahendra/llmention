@@ -38,6 +38,18 @@ LLMention tracks, generates, and optimizes your brand's AI visibility in ChatGPT
 
 ---
 
+## Realistic Expectations
+
+GEO is probabilistic — not deterministic. Here is what to expect honestly:
+
+- **Publishing content is step one.** LLMention generates the content; you must publish it (your site, docs, blog, GitHub) for models to ever see it. A file sitting on your laptop changes nothing.
+- **Results emerge over weeks, not hours.** LLMs are retrained or re-indexed on varying schedules. A citation improvement may take days to months to appear in live models.
+- **Scores are estimates, not guarantees.** The citability scores from `optimize` and `generate --evaluate` reflect how well your content matches patterns that *current* models tend to cite. Different models, prompt phrasings, and retraining runs will produce different results.
+- **Iteration is the strategy.** Run `audit`, publish the generated content, wait, run `audit` again. Track the trend over time with `report` and `stats`. Expect 2–4 audit cycles before seeing meaningful movement.
+- **Your mileage will vary.** Crowded niches (e.g. "best JavaScript framework") are harder than specific ones (e.g. "deterministic edge runtime for robotics"). The more precise your niche, the higher your early lift.
+
+---
+
 ## Installation
 
 ### Pre-built binaries (macOS, Linux, Windows)
@@ -113,6 +125,16 @@ llmention optimize igrisinertial.com --niche "deterministic edge runtime"
 llmention optimize myproject.com --niche "rust cli tool" --competitors "ripgrep,fd" --steps 5
 llmention optimize myproject.com --niche "observability" --dry-run
 llmention optimize myproject.com --niche "edge AI runtime" --auto-apply
+llmention optimize myproject.com --niche "Rust CLI" --max-rounds 3  # up to 3 refinement rounds
+```
+
+**`--max-rounds`** (default: 3) — when a generated section scores below the citability threshold, the agent critiques and rewrites it automatically, showing its reasoning at each step:
+
+```
+  → [1/3] "best edge runtime for robotics"…  ✓ (anthropic)
+  → Score 28% — refining (round 1/3)…
+    ↳ anthropic (28% confidence): answer too vague, missing feature table
+  ✓ Improved: 28% → 61%
 ```
 
 **Example output:**
@@ -253,6 +275,21 @@ Once installed, apply a plugin with `--plugin`:
 llmention generate "best rust cli tool" --plugin rust-crate --about "myproject.io is..."
 llmention optimize myproject.com --niche "Rust CLI" --plugin rust-crate --auto-apply
 ```
+
+### `chat` — Guided TUI assistant
+
+Interactive goal-oriented terminal interface. State a goal, answer 1–2 clarifying questions, and the agent proposes and runs an optimize/generate/audit plan.
+
+```bash
+llmention chat                # launch TUI (arrow keys to scroll, Enter to submit, Ctrl+C to quit)
+llmention chat --models ollama
+```
+
+The chat mode is **not** a free-form conversation — it's a focused flow:
+1. Enter your domain
+2. Enter your niche
+3. Choose: audit / optimize / generate
+4. Review results inline, then pick what to do next
 
 ### `docs` — Command reference
 
@@ -423,16 +460,19 @@ Results are stored locally in SQLite. Run audits over time to track trends.
 
 ```
 src/
-  bin/llmention.rs        CLI entrypoint (clap, 14 commands)
+  bin/llmention.rs        CLI entrypoint (clap, 15 commands)
   agent/
-    optimizer.rs          5-step GEO agent
+    optimizer.rs          5-step GEO agent with iterative refinement
+    refiner.rs            GEO critic — critiques and rewrites low-scoring content
     plan.rs               OptimizationPlan structs
     prompt_discovery.rs   LLM-driven prompt discovery
   geo/
     generator.rs          GEO content generation (plugin-aware)
     evaluator.rs          Before/after citability scoring
     prompts.rs            Template loading, default_prompts()
-    templates/            Embedded .prompt.md files
+    templates/            Embedded .prompt.md files (incl. refine.prompt.md)
+  tui/
+    chat.rs               Ratatui guided chat mode (llmention chat)
   marketplace/
     registry.rs           Built-in template catalog (6 niches)
     builtin.rs            Embedded template strings
@@ -492,8 +532,9 @@ PRs welcome.
 | 4 | `prompts`, `plugins`, `share`, `stats`, `docs` | ✅ Done |
 | 4 | Plugin system + community template marketplace | ✅ Done |
 | 5 | `quickstart`, launch polish, EXAMPLES.md | ✅ Done |
-| 6 | Self-hosted web dashboard | Planned |
-| 6 | Community prompt registry (web-hosted) | Planned |
+| 6 | `chat` TUI, iterative refinement (`--max-rounds`), Refiner module | ✅ Done |
+| 7 | Self-hosted web dashboard | Planned |
+| 7 | Community prompt registry (web-hosted) | Planned |
 
 ---
 
