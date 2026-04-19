@@ -49,6 +49,10 @@ struct Cli {
     #[arg(long, short, global = true, default_value = "false")]
     verbose: bool,
 
+    /// Suppress progress output — print only the final result (for CI/scripts)
+    #[arg(long, short, global = true, default_value = "false")]
+    quiet: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -162,10 +166,56 @@ enum Commands {
         #[arg(long, short)]
         evaluate: bool,
     },
+    /// Manage saved projects (domain + niche pairs for quick re-auditing)
+    ///
+    /// Examples:
+    ///   llmention projects
+    ///   llmention projects add myproject.com --niche "Rust CLI tool"
+    ///   llmention projects remove myproject.com
+    Projects {
+        #[command(subcommand)]
+        action: Option<ProjectAction>,
+    },
+    /// Watch a domain and re-audit it on a fixed interval
+    ///
+    /// Examples:
+    ///   llmention watch myproject.com --niche "Rust CLI tool"
+    ///   llmention watch myproject.com --interval 30 --models ollama
+    Watch {
+        /// Domain or brand to watch
+        domain: String,
+        /// Product niche for smarter prompts
+        #[arg(long)]
+        niche: Option<String>,
+        /// Interval in minutes between audits (default: 60)
+        #[arg(long, short, default_value = "60")]
+        interval: u64,
+    },
     /// Create config file and show setup instructions
     Config,
     /// Check your setup: config, providers, Ollama connectivity
     Doctor,
+}
+
+#[derive(clap::Subcommand)]
+enum ProjectAction {
+    /// Add or update a saved project
+    Add {
+        /// Domain or brand (e.g. myproject.com)
+        domain: String,
+        /// Product niche
+        #[arg(long)]
+        niche: Option<String>,
+        /// Optional notes
+        #[arg(long)]
+        notes: Option<String>,
+    },
+    /// Remove a saved project
+    #[command(alias = "rm")]
+    Remove {
+        /// Domain to remove
+        domain: String,
+    },
 }
 
 #[tokio::main]
@@ -220,6 +270,7 @@ async fn main() -> Result<()> {
                     verbose: cli.verbose,
                     concurrency: config.defaults.concurrency,
                     judge: judge_provider,
+                    quiet: cli.quiet,
                 },
             ).await?;
             report::print_summary(&summary, prev_rate);
@@ -249,6 +300,7 @@ async fn main() -> Result<()> {
                     verbose: cli.verbose,
                     concurrency: config.defaults.concurrency,
                     judge: judge_provider,
+                    quiet: cli.quiet,
                 },
             ).await?;
             report::print_summary(&summary, prev_rate);
@@ -297,6 +349,7 @@ async fn main() -> Result<()> {
                 steps,
                 dry_run,
                 verbose: cli.verbose,
+                quiet: cli.quiet,
             };
 
             let plan = optimizer::optimize(&opts, &providers, &storage, &cache).await?;
@@ -410,6 +463,102 @@ async fn main() -> Result<()> {
                 let primary_content = &results[0].content;
                 let delta = evaluator::evaluate_content(&prompt, primary_content, &providers).await?;
                 report::print_eval_delta(&delta, before_stored);
+            }
+        }
+
+        Commands::Projects { action } => {
+            match action {
+                None | Some(ProjectAction::Add { .. }) if matches!(action, None) => {
+                    // list
+                    run_projects_list(&storage)?;
+                }
+                Some(ProjectAction::Add { domain, niche, notes }) => {
+                    storage.upsert_project(&domain, niche.as_deref(), notes.as_deref())?;
+                    println!(
+                        "\n  {}  {} saved to projects\n",
+                        "✓".green().bold(),
+                        domain.cyan()
+                    );
+                }
+                Some(ProjectAction::Remove { domain }) => {
+                    if storage.remove_project(&domain)? {
+                        println!("\n  {}  {} removed\n", "✓".green().bold(), domain.cyan());
+                    } else {
+                        println!("\n  {}  {} not found in projects\n", "!".yellow(), domain.cyan());
+                    }
+                }
+                _ => run_projects_list(&storage)?,
+            }
+        }
+
+        Commands::Watch { domain, niche, interval } => {
+            let providers = tracker::build_providers_filtered(&config, cli.models.as_deref());
+            if providers.is_empty() {
+                no_providers_error();
+            }
+            let audit_prompts =
+                prompts::default_prompts(&domain, niche.as_deref(), None);
+
+            if !cli.quiet {
+                println!(
+                    "\n  {}  {}  every {} min  — Ctrl+C to stop\n",
+                    "Watching".bold(),
+                    domain.cyan().bold(),
+                    interval
+                );
+            }
+
+            let mut prev_rate: Option<f64> = fetch_prev_rate(&storage, &domain);
+            let dur = std::time::Duration::from_secs(interval * 60);
+            loop {
+                let track_opts = TrackOptions {
+                    verbose: false,
+                    concurrency: config.defaults.concurrency,
+                    judge: None,
+                    quiet: true, // always quiet internally; we print our own summary
+                };
+                match tracker::run_track(
+                    &domain,
+                    audit_prompts.clone(),
+                    providers.clone(),
+                    &storage,
+                    &cache,
+                    track_opts,
+                )
+                .await
+                {
+                    Ok(summary) => {
+                        let rate = summary.mention_rate();
+                        let ts = chrono::Utc::now().format("%Y-%m-%d %H:%M UTC");
+                        let trend = match prev_rate {
+                            Some(p) if rate - p > 2.0 => format!(" ↑{:.0}pp", rate - p).green().to_string(),
+                            Some(p) if p - rate > 2.0 => format!(" ↓{:.0}pp", p - rate).red().to_string(),
+                            Some(_) => " →".dimmed().to_string(),
+                            None => String::new(),
+                        };
+                        let rate_str = format!("{:.0}%", rate);
+                        let rate_colored = if rate >= 60.0 {
+                            rate_str.green().bold()
+                        } else if rate >= 30.0 {
+                            rate_str.yellow().bold()
+                        } else {
+                            rate_str.red().bold()
+                        };
+                        println!(
+                            "  {}  {}  {}{}  ({}/{})",
+                            ts.to_string().dimmed(),
+                            domain.cyan(),
+                            rate_colored,
+                            trend,
+                            summary.mention_count,
+                            summary.total_queries
+                        );
+                        let _ = storage.touch_project_last_audited(&domain);
+                        prev_rate = Some(rate);
+                    }
+                    Err(e) => eprintln!("  {} {}", "Error:".red().bold(), e),
+                }
+                tokio::time::sleep(dur).await;
             }
         }
 
@@ -688,4 +837,53 @@ fn load_prompts(path: Option<PathBuf>, domain: &str) -> Result<Vec<String>> {
 
 fn audit_prompts(domain: &str, niche: Option<&str>, competitor: Option<&str>) -> Vec<String> {
     prompts::default_prompts(domain, niche, competitor)
+}
+
+fn run_projects_list(storage: &Storage) -> anyhow::Result<()> {
+    use comfy_table::{Attribute, Cell, Color, ContentArrangement, Table};
+    let projects = storage.list_projects()?;
+    println!();
+    println!(
+        "  {}  {} saved",
+        "Projects".bold(),
+        projects.len().to_string().cyan()
+    );
+    println!("{}", "─".repeat(64).dimmed());
+    if projects.is_empty() {
+        println!(
+            "\n  No projects yet. Add one:\n  {}\n",
+            "llmention projects add myproject.com --niche \"your niche\"".cyan()
+        );
+        return Ok(());
+    }
+    println!();
+    let mut table = Table::new();
+    table.set_content_arrangement(ContentArrangement::Dynamic);
+    table.set_header(vec![
+        Cell::new("Domain").add_attribute(Attribute::Bold),
+        Cell::new("Niche").add_attribute(Attribute::Bold),
+        Cell::new("Last Audited").add_attribute(Attribute::Bold),
+        Cell::new("Notes").add_attribute(Attribute::Bold),
+    ]);
+    for p in &projects {
+        let last = p
+            .last_audited
+            .as_deref()
+            .and_then(|ts| chrono::DateTime::parse_from_rfc3339(ts).ok())
+            .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+            .unwrap_or_else(|| "never".to_string());
+        table.add_row(vec![
+            Cell::new(&p.domain).fg(Color::Cyan),
+            Cell::new(p.niche.as_deref().unwrap_or("—")),
+            Cell::new(last).fg(Color::DarkGrey),
+            Cell::new(p.notes.as_deref().unwrap_or("—")).fg(Color::DarkGrey),
+        ]);
+    }
+    println!("{table}");
+    println!(
+        "\n  {}  llmention audit <domain>  or  llmention optimize <domain> --niche <niche>\n",
+        "Tip".yellow().bold()
+    );
+    Ok(()
+    )
 }
