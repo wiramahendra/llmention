@@ -2,6 +2,7 @@ use colored::Colorize;
 use comfy_table::{Attribute, Cell, Color, ContentArrangement, Table};
 
 use crate::{
+    agent::plan::OptimizationPlan,
     geo::{evaluator::EvalDelta, generator::GenerateResult},
     types::{MentionResult, Position, Sentiment, TrackSummary},
 };
