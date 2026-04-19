@@ -25,6 +25,7 @@ pub struct OptimizeOptions {
     pub steps: usize,
     pub dry_run: bool,
     pub verbose: bool,
+    pub quiet: bool,
 }
 
 pub async fn optimize(
@@ -50,7 +51,7 @@ pub async fn optimize(
         providers.to_vec(),
         storage,
         cache,
-        TrackOptions { verbose: opts.verbose, concurrency: 5, judge: None },
+        TrackOptions { verbose: opts.verbose, concurrency: 5, judge: None, quiet: opts.quiet },
     )
     .await?;
 
@@ -132,6 +133,7 @@ pub async fn optimize(
 }
 
 fn print_step(n: u8, total: u8, msg: &str) {
+    // Always show step headers — they're the agent's primary progress signal.
     eprintln!();
     eprintln!("  [{}/{}]  {}", n, total, msg.bold());
 }
