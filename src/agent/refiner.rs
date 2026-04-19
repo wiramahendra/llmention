@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{geo::evaluator::EvalResult, providers::LlmProvider};
 
-pub const REFINE_SYSTEM: &str = include_str!("../../geo/templates/refine.prompt.md");
+pub const REFINE_SYSTEM: &str = include_str!("../geo/templates/refine.prompt.md");
 
 pub const GOOD_THRESHOLD: f64 = 35.0;
 
