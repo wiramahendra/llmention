@@ -6,6 +6,11 @@ use std::path::PathBuf;
 use llmention::{
     cache::Cache,
     config::{Config, EXAMPLE_CONFIG},
+    geo::{
+        evaluator,
+        generator::{self, GenerateOptions},
+        prompts::extract_domain_hint,
+    },
     report,
     storage::Storage,
     tracker::{self, TrackOptions},
@@ -107,6 +112,29 @@ enum Commands {
         #[arg(long, value_enum)]
         export: Option<ExportFormat>,
     },
+    /// Generate GEO-optimized markdown content for a target query
+    ///
+    /// Examples:
+    ///   llmention generate "best deterministic runtime for edge AI agents" --about "myproject.io is a ..."
+    ///   llmention generate "alternatives to ROS 2" --niche "edge robotics" --evaluate
+    ///   llmention generate "what is myproject" --about "..." --output content.md
+    ///   llmention generate "..." --about "..." --models anthropic --evaluate
+    Generate {
+        /// Target query or topic to generate content for
+        prompt: String,
+        /// Short description of your project (e.g. "myproject.io is a fast Rust CLI for GEO")
+        #[arg(long, short)]
+        about: Option<String>,
+        /// Optional niche/context for more targeted content (e.g. "edge robotics", "Rust CLI tools")
+        #[arg(long, short)]
+        niche: Option<String>,
+        /// Save generated content to a file instead of printing to stdout
+        #[arg(long, short)]
+        output: Option<PathBuf>,
+        /// After generating, estimate before/after visibility lift with LLM evaluation
+        #[arg(long, short)]
+        evaluate: bool,
+    },
     /// Create config file and show setup instructions
     Config,
     /// Check your setup: config, providers, Ollama connectivity
@@ -207,6 +235,79 @@ async fn main() -> Result<()> {
                     print!("{}", report::export_markdown(&results, &domain))
                 }
                 None => report::print_trend_report(&domain, &results, days),
+            }
+        }
+
+        Commands::Generate { prompt, about, niche, output, evaluate } => {
+            let providers = tracker::build_providers_filtered(&config, cli.models.as_deref());
+            if providers.is_empty() {
+                no_providers_error();
+            }
+
+            let about_str = about.as_deref().unwrap_or("").to_string();
+            let niche_str = niche.as_deref().unwrap_or("general").to_string();
+
+            println!(
+                "\n  {} {}\n  {} {}\n",
+                "Generating content for:".bold(),
+                format!("\"{}\"", prompt).cyan(),
+                "Using models:".dimmed(),
+                providers.iter().map(|p| p.name()).collect::<Vec<_>>().join(", ").cyan()
+            );
+
+            let opts = GenerateOptions {
+                prompt: prompt.clone(),
+                about: about_str.clone(),
+                niche: niche_str,
+                verbose: cli.verbose,
+            };
+
+            let results = generator::generate(&opts, &providers).await?;
+
+            if results.is_empty() {
+                bail!("No providers returned a response. Check your config or try --models.");
+            }
+
+            match &output {
+                Some(path) => {
+                    let primary = &results[0];
+                    std::fs::write(path, &primary.content)?;
+                    println!(
+                        "  {} Saved to {}\n",
+                        "✓".green().bold(),
+                        path.display().to_string().cyan()
+                    );
+                    println!(
+                        "  {}  git add {} && git commit -m \"docs: add GEO content for '{}'\"",
+                        "Tip".yellow().bold(),
+                        path.display(),
+                        prompt
+                    );
+                    println!();
+                }
+                None => {
+                    report::print_generate_results(&results, &prompt);
+                }
+            }
+
+            if evaluate {
+                println!("  {} Running before/after evaluation…\n", "→".cyan());
+
+                let domain_hint = extract_domain_hint(&about_str);
+                let before_stored = domain_hint.as_deref().and_then(|d| {
+                    storage.query_domain(d, 7).ok().and_then(|results| {
+                        if results.is_empty() {
+                            None
+                        } else {
+                            let mentioned = results.iter().filter(|r| r.mentioned).count();
+                            Some(mentioned as f64 / results.len() as f64 * 100.0)
+                        }
+                    })
+                });
+
+                let primary_content = &results[0].content;
+                let delta = evaluator::evaluate_content(&prompt, primary_content, &providers).await?;
+                report::print_eval_delta(&delta, before_stored);
             }
         }
 
