@@ -4,9 +4,9 @@
 [![Rust 1.75+](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org)
 [![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/wiramahendra/llMention/releases)
 
-**The terminal-native GEO agent for indie hackers and open-source maintainers.**
+> **The private, local-first GEO companion for indie builders — track, generate, and optimize your visibility in AI answers.**
 
-LLMention tracks, generates, and optimizes your brand's AI visibility in ChatGPT, Claude, Grok, Perplexity, and any LLM you configure — privately, locally, no SaaS.
+LLMention tracks, generates, and optimizes your brand's AI visibility in ChatGPT, Claude, Grok, Perplexity, and any LLM you configure — privately, locally, no SaaS, no subscriptions.
 
 ```
   Mention rate   67%  (8/12 queries)  (↑ 24pp vs last run)
@@ -16,26 +16,25 @@ LLMention tracks, generates, and optimizes your brand's AI visibility in ChatGPT
 
 ---
 
-## Why LLMention?
+## The Honest Pitch
 
 - **Private.** Your prompts never leave your machine. No telemetry, no sign-up, no cloud DB.
-- **Unlimited.** Use your own API keys or run 100% locally with [Ollama](https://ollama.com) — no per-query pricing.
-- **Agentic.** The `optimize` command autonomously discovers weak topics, generates LLM-citable content, and projects your visibility lift.
-- **Scriptable.** `--quiet` flag and clean exit codes for CI pipelines and automation.
+- **Local-first.** Use your own API keys or run 100% free with [Ollama](https://ollama.com) — no per-query pricing.
+- **Developer-first.** Clean CLI, scriptable with `--quiet`, native binary (~7 MB).
+- **No lock-in.** Extensible via plugins. Your data stays in SQLite on your machine.
 
-|                    | LLMention          | Enterprise GEO tools |
-|--------------------|--------------------|----------------------|
-| Price              | Free / open-source | $200–$2 000/mo       |
-| Data stays local   | ✓                  | ✗ (their servers)    |
-| Content generation | ✓ built-in         | ✗                    |
-| Agentic optimize   | ✓ 5-step agent     | ✗                    |
-| Plugin templates   | ✓ marketplace      | ✗                    |
-| Shareable reports  | ✓ markdown + JSON  | ✗                    |
-| Project manager    | ✓ SQLite           | Limited              |
-| Watch mode         | ✓ background poll  | ✗                    |
-| Desktop GUI        | ✓ optional Tauri   | Web dashboard        |
-| Ollama support     | ✓ fully local      | ✗                    |
-| Binary size        | 7.3 MB             | —                    |
+**What LLMention does:** It measures how often LLMs mention your brand and generates optimized content to improve those odds.
+
+**What LLMention doesn't do:** It doesn't guarantee citations. GEO results depend on your content quality and model behavior. We help you measure and improve — success requires ongoing effort.
+
+|                    | LLMention          | The Prompting Company | Enterprise GEO tools |
+|--------------------|--------------------|-----------------------|----------------------|
+| Managed creation & routing | ✗ | ✓ | ✓ |
+| Self-serve tools  | ✓                  | ✗                    | ✗                   |
+| Price              | Free / open-source | $50–$500/mo          | $200–$2 000/mo      |
+| Data stays local   | ✓                  | ✗ (their servers)    | ✗ (their servers)   |
+| Content generation | ✓ built-in         | ✓                    | ✗                   |
+| Ollama support     | ✓ fully local      | ✗                    | ✗                   |
 
 ---
 
@@ -385,20 +384,38 @@ concurrency = 5
 
 ---
 
-## How It Works
+## How It Actually Works
 
-| Layer | Module | Purpose |
-|-------|--------|---------|
-| Tracking | `tracker.rs` | Concurrent query orchestrator (semaphore-limited) |
-| Parsing | `parser.rs` | Rule-based mention / citation / sentiment detection |
-| Cache | `cache.rs` | 24-hour SHA-256 keyed file cache |
-| Storage | `storage.rs` | SQLite (`~/.llmention/mentions.db`) with projects + stats |
-| Generation | `geo/generator.rs` | GEO content via LlmProvider + plugin template support |
-| Evaluation | `geo/evaluator.rs` | Citability scoring using structured LLM eval |
-| Agent | `agent/optimizer.rs` | 5-step orchestrator (discover → audit → generate → score) |
-| Discovery | `agent/prompt_discovery.rs` | LLM-based high-intent prompt generation |
-| Plugins | `plugins/` | TOML manifest loader + local plugin discovery |
-| Marketplace | `marketplace/` | 6 built-in niche templates + search/install |
+LLMention operates in two phases:
+
+### 1. Measurement (audit, track, watch)
+The tool sends prompts about your brand to configured LLMs and parses responses for:
+- **Mentions** — does the model mention your brand?
+- **Citations** — does it cite your website/content?
+- **Sentiment** — positive, neutral, or negative?
+
+Results are stored locally in SQLite. Run audits over time to track trends.
+
+### 2. Optimization (generate, optimize)
+- **`generate`**: Creates LLM-citable markdown content for a target query
+- **`optimize`**: Autonomous 5-step agent that discovers weak topics → audits → generates content → evaluates citability
+
+**Important:** LLMention improves the *probability* of mentions and citations. It cannot guarantee them. GEO success depends on:
+- Your content quality and relevance
+- Model training data and behavior
+- Competitor presence in your niche
+- Ongoing iteration and testing
+
+---
+
+## Built With
+
+- **Rust** — native binary, no runtime required
+- **Tauri** — optional desktop GUI
+- **SQLite** — local data storage
+- **Ollama** — free local LLM inference
+- **clap** — CLI argument parsing
+- **tokio** — async runtime
 
 ---
 
