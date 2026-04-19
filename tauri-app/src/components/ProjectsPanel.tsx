@@ -9,6 +9,11 @@ interface Project {
   last_audited: string | null;
 }
 
+const EXAMPLE_PROJECTS = [
+  { domain: "igrisinertial.com", niche: "deterministic edge runtime", notes: "Real-world GEO case study" },
+  { domain: "ripgrep.rs", niche: "Rust CLI tool", notes: "Popular open source tool" },
+];
+
 export default function ProjectsPanel() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [domain, setDomain] = useState("");
@@ -91,6 +96,25 @@ export default function ProjectsPanel() {
               }}>Remove</button>
             </div>
           ))}
+        </div>
+      )}
+
+      {projects.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <div style={{ fontSize: 13, color: "#8b949e", marginBottom: 12 }}>Example projects (for inspiration):</div>
+          <div style={card}>
+            {EXAMPLE_PROJECTS.map((p, i) => (
+              <div key={i} style={{
+                padding: "8px 0",
+                borderBottom: i < EXAMPLE_PROJECTS.length - 1 ? "1px solid #21262d" : "none",
+              }}>
+                <div style={{ fontWeight: 600, fontSize: 14, color: "#58a6ff" }}>{p.domain}</div>
+                <div style={{ fontSize: 12, color: "#8b949e", marginTop: 2 }}>
+                  {p.niche} — {p.notes}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
