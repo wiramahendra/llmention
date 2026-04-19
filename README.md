@@ -62,7 +62,7 @@ cargo install --git https://github.com/wiramahendra/llMention
 git clone https://github.com/wiramahendra/llMention
 cd llmention
 cargo build --release
-# Binary at target/release/llmention (7.3 MB)
+# Binary at target/release/llmention (7.5 MB)
 ```
 
 ### Desktop App (optional)
@@ -83,22 +83,19 @@ The desktop app wraps the same core library — identical results to the CLI.
 ## Quick Start
 
 ```bash
-# 1. Create config
-llmention config
+# Guided interactive walkthrough
+llmention quickstart
+```
 
-# 2. Edit ~/.llmention/config.toml — add API key or enable Ollama
+Or manually:
 
-# 3. Verify
-llmention doctor
-
-# 4. Run your first audit
-llmention audit myproject.com --niche "Rust CLI tool"
-
-# 5. Save it as a project
-llmention projects add myproject.com --niche "Rust CLI tool"
-
-# 6. Let the agent optimize
-llmention optimize myproject.com --niche "Rust CLI tool" --auto-apply
+```bash
+llmention config                                         # 1. create config
+# edit ~/.llmention/config.toml — add API key or enable Ollama
+llmention doctor                                         # 2. verify setup
+llmention audit myproject.com --niche "Rust CLI tool"   # 3. first scan
+llmention projects add myproject.com --niche "Rust CLI tool"  # 4. save project
+llmention optimize myproject.com --niche "Rust CLI tool" --auto-apply  # 5. improve
 ```
 
 > **Zero-cost option:** `ollama pull llama3.2` → set `enabled = true` under `[providers.ollama]` → use `--models ollama`
@@ -264,11 +261,14 @@ llmention docs                         # print full docs as markdown
 llmention docs > COMMANDS.md           # save to file
 ```
 
-### `config` / `doctor`
+### `quickstart` / `docs` / `config` / `doctor`
 
 ```bash
-llmention config     # create ~/.llmention/config.toml
-llmention doctor     # verify config, providers, and Ollama connectivity
+llmention quickstart    # guided step-by-step beginner flow
+llmention docs          # full command reference as markdown
+llmention docs > COMMANDS.md
+llmention config        # create ~/.llmention/config.toml
+llmention doctor        # verify config, providers, Ollama connectivity
 ```
 
 ---
