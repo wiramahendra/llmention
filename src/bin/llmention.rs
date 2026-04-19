@@ -138,7 +138,7 @@ enum Commands {
     ///   llmention optimize myproject.com --niche "..." --dry-run
     ///   llmention optimize myproject.com --niche "..." --auto-apply
     ///   llmention optimize myproject.com --niche "Rust CLI" --plugin rust-crate
-    ///   llmention optimize myproject.com --niche "..." --rounds 3
+    ///   llmention optimize myproject.com --niche "..." --max-rounds 3
     Optimize {
         /// Domain or brand to optimize (e.g. myproject.com)
         domain: String,
@@ -151,9 +151,9 @@ enum Commands {
         /// Number of weak prompts to generate content for (default: 3)
         #[arg(long, short, default_value = "3")]
         steps: usize,
-        /// Max refinement rounds per section when citability is low (default: 2)
-        #[arg(long, default_value = "2")]
-        rounds: usize,
+        /// Max refinement rounds per section when citability is low (default: 3)
+        #[arg(long, default_value = "3")]
+        max_rounds: usize,
         /// Show full plan and generated content without writing any files
         #[arg(long)]
         dry_run: bool,
@@ -438,7 +438,7 @@ async fn main() -> Result<()> {
             }
         }
 
-        Commands::Optimize { domain, niche, competitors, steps, rounds, dry_run, auto_apply, plugin } => {
+        Commands::Optimize { domain, niche, competitors, steps, max_rounds, dry_run, auto_apply, plugin } => {
             let providers = tracker::build_providers_filtered(&config, cli.models.as_deref());
             if providers.is_empty() {
                 no_providers_error();
@@ -472,7 +472,7 @@ async fn main() -> Result<()> {
                 niche,
                 competitors: competitors_list,
                 steps,
-                max_rounds: rounds,
+                max_rounds,
                 dry_run,
                 verbose: cli.verbose,
                 quiet: cli.quiet,
@@ -1245,8 +1245,10 @@ fn generate_docs() -> String {
          "llmention report myproject.com\nllmention report myproject.com --days 30\nllmention report myproject.com --export csv > results.csv"),
         ("generate", "Generate GEO-optimized markdown content for a target query.",
          "llmention generate \"best rust cli tool\" --about \"myproject.io is a ...\"\nllmention generate \"...\" --plugin rust-crate --about \"...\"\nllmention generate \"...\" --evaluate"),
-        ("optimize", "5-step autonomous GEO agent: discover, audit, generate, evaluate.",
-         "llmention optimize myproject.com --niche \"Rust CLI tool\"\nllmention optimize myproject.com --niche \"...\" --steps 5 --auto-apply\nllmention optimize myproject.com --niche \"...\" --plugin rust-crate"),
+        ("optimize", "5-step autonomous GEO agent: discover, audit, generate, refine, evaluate.",
+         "llmention optimize myproject.com --niche \"Rust CLI tool\"\nllmention optimize myproject.com --niche \"...\" --steps 5 --auto-apply\nllmention optimize myproject.com --niche \"...\" --max-rounds 3\nllmention optimize myproject.com --niche \"...\" --plugin rust-crate"),
+        ("chat", "Structured TUI assistant — state a goal, get a guided GEO plan.",
+         "llmention chat\nllmention chat --models ollama"),
         ("projects", "Manage saved domain + niche pairs.",
          "llmention projects\nllmention projects add myproject.com --niche \"Rust CLI tool\"\nllmention projects remove myproject.com"),
         ("watch", "Background polling audit on a fixed interval.",
