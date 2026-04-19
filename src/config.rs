@@ -11,6 +11,8 @@ pub struct Config {
     pub defaults: DefaultsConfig,
     #[serde(default)]
     pub judge: JudgeConfig,
+    #[serde(default)]
+    pub plugins: PluginsConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -81,6 +83,22 @@ impl Default for DefaultsConfig {
             days: default_days(),
             concurrency: default_concurrency(),
         }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PluginsConfig {
+    /// Names of installed plugins that are active by default.
+    #[serde(default)]
+    pub enabled_plugins: Vec<String>,
+    /// Reserved for future auto-update support.
+    #[serde(default)]
+    pub auto_update: bool,
+}
+
+impl Default for PluginsConfig {
+    fn default() -> Self {
+        Self { enabled_plugins: Vec::new(), auto_update: false }
     }
 }
 
