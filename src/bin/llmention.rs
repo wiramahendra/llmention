@@ -17,6 +17,7 @@ use llmention::{
     report,
     storage::Storage,
     tracker::{self, TrackOptions},
+    tui,
 };
 
 const BANNER: &str = r#"
@@ -137,6 +138,7 @@ enum Commands {
     ///   llmention optimize myproject.com --niche "..." --dry-run
     ///   llmention optimize myproject.com --niche "..." --auto-apply
     ///   llmention optimize myproject.com --niche "Rust CLI" --plugin rust-crate
+    ///   llmention optimize myproject.com --niche "..." --rounds 3
     Optimize {
         /// Domain or brand to optimize (e.g. myproject.com)
         domain: String,
@@ -149,6 +151,9 @@ enum Commands {
         /// Number of weak prompts to generate content for (default: 3)
         #[arg(long, short, default_value = "3")]
         steps: usize,
+        /// Max refinement rounds per section when citability is low (default: 2)
+        #[arg(long, default_value = "2")]
+        rounds: usize,
         /// Show full plan and generated content without writing any files
         #[arg(long)]
         dry_run: bool,
@@ -259,6 +264,12 @@ enum Commands {
         #[arg(long, short, default_value = "30")]
         days: u32,
     },
+    /// Interactive goal-oriented GEO assistant in your terminal
+    ///
+    /// Examples:
+    ///   llmention chat
+    ///   llmention chat --models ollama
+    Chat,
     /// Print command documentation as markdown
     Docs,
     /// Create config file and show setup instructions
@@ -427,7 +438,7 @@ async fn main() -> Result<()> {
             }
         }
 
-        Commands::Optimize { domain, niche, competitors, steps, dry_run, auto_apply, plugin } => {
+        Commands::Optimize { domain, niche, competitors, steps, rounds, dry_run, auto_apply, plugin } => {
             let providers = tracker::build_providers_filtered(&config, cli.models.as_deref());
             if providers.is_empty() {
                 no_providers_error();
@@ -461,6 +472,7 @@ async fn main() -> Result<()> {
                 niche,
                 competitors: competitors_list,
                 steps,
+                max_rounds: rounds,
                 dry_run,
                 verbose: cli.verbose,
                 quiet: cli.quiet,
@@ -874,6 +886,14 @@ async fn main() -> Result<()> {
                     report::print_stats(&domain, &stats, days);
                 }
             }
+        }
+
+        Commands::Chat => {
+            let providers = tracker::build_providers_filtered(&config, cli.models.as_deref());
+            if providers.is_empty() {
+                no_providers_error();
+            }
+            tui::chat::run(providers).await?;
         }
 
         Commands::Docs => {
