@@ -284,6 +284,26 @@ enum Commands {
     /// Examples:
     ///   llmention init
     Init,
+    /// Set up automatic background auditing (launchd on macOS, prints cron line on Linux)
+    ///
+    /// Examples:
+    ///   llmention schedule myproject.com
+    ///   llmention schedule myproject.com --niche "Rust CLI tool" --interval weekly
+    ///   llmention schedule myproject.com --interval daily
+    ///   llmention schedule myproject.com --uninstall
+    Schedule {
+        /// Domain to audit automatically
+        domain: String,
+        /// Product niche for smarter prompts
+        #[arg(long)]
+        niche: Option<String>,
+        /// How often to audit: daily, weekly, or a number of hours (e.g. 48)
+        #[arg(long, default_value = "daily")]
+        interval: String,
+        /// Remove the scheduled job instead of installing it
+        #[arg(long)]
+        uninstall: bool,
+    },
     /// Stamp a publish checkpoint — records your current mention rate as a before/after baseline
     ///
     /// Run this right after publishing GEO content. Then re-audit in a few days and run
