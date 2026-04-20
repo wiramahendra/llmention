@@ -15,6 +15,7 @@ use llmention::{
     marketplace::{builtin, registry},
     plugins,
     report,
+    scheduler,
     storage::Storage,
     tracker::{self, TrackOptions},
     tui,
@@ -283,6 +284,33 @@ enum Commands {
     /// Examples:
     ///   llmention init
     Init,
+    /// Stamp a publish checkpoint — records your current mention rate as a before/after baseline
+    ///
+    /// Run this right after publishing GEO content. Then re-audit in a few days and run
+    /// `llmention results <domain>` to see whether your rate improved.
+    ///
+    /// Examples:
+    ///   llmention publish myproject.com
+    ///   llmention publish myproject.com --note "published geo/ section on blog"
+    Publish {
+        /// Domain to stamp
+        domain: String,
+        /// Optional label describing what you published
+        #[arg(long, short)]
+        note: Option<String>,
+    },
+    /// Show before/after visibility delta since your last publish checkpoint
+    ///
+    /// Examples:
+    ///   llmention results myproject.com
+    ///   llmention results myproject.com --all
+    Results {
+        /// Domain to inspect
+        domain: String,
+        /// Show all past checkpoints, not just the most recent
+        #[arg(long)]
+        all: bool,
+    },
 }
 
 #[derive(clap::Subcommand)]
@@ -906,6 +934,66 @@ async fn main() -> Result<()> {
         }
 
         Commands::Init => run_init()?,
+
+        Commands::Publish { domain, note } => {
+            let (rate, mentioned, total) = storage.current_mention_stats(&domain)?;
+            if total == 0 {
+                println!(
+                    "\n  {}  No audit data for {}. Run {} first.\n",
+                    "!".yellow(),
+                    domain.cyan(),
+                    format!("llmention audit {}", domain).cyan()
+                );
+            } else {
+                storage.record_publish_snapshot(&domain, note.as_deref(), rate, mentioned, total)?;
+                println!();
+                println!(
+                    "  {}  Publish checkpoint recorded for {}",
+                    "✓".green().bold(),
+                    domain.cyan()
+                );
+                println!(
+                    "  {}  Baseline mention rate: {:.0}%  ({}/{} queries, last 7 days)",
+                    "→".cyan(),
+                    rate,
+                    mentioned,
+                    total
+                );
+                if let Some(n) = &note {
+                    println!("  {}  Note: {}", "→".cyan(), n.dimmed());
+                }
+                println!();
+                println!(
+                    "  {}  Re-audit in a few days, then run {} to measure lift.",
+                    "Tip".yellow().bold(),
+                    format!("llmention results {}", domain).cyan()
+                );
+                println!();
+            }
+        }
+
+        Commands::Results { domain, all } => {
+            let snapshots = storage.list_publish_snapshots(&domain)?;
+            if snapshots.is_empty() {
+                println!(
+                    "\n  {}  No publish checkpoints for {}. Run {} after publishing content.\n",
+                    "!".yellow(),
+                    domain.cyan(),
+                    format!("llmention publish {}", domain).cyan()
+                );
+            } else {
+                let (current_rate, current_mentioned, current_total) =
+                    storage.current_mention_stats(&domain)?;
+                report::print_results(
+                    &domain,
+                    &snapshots,
+                    current_rate,
+                    current_mentioned,
+                    current_total,
+                    all,
+                );
+            }
+        }
 
         Commands::Config => run_config_command()?,
 
