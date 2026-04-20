@@ -15,6 +15,18 @@ pub struct DomainDayStat {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublishSnapshot {
+    pub id: i64,
+    pub domain: String,
+    pub note: Option<String>,
+    /// Mention rate (0–100) captured at publish time.
+    pub mention_rate: f64,
+    pub mention_count: usize,
+    pub total_queries: usize,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
     pub id: i64,
     pub domain: String,
@@ -54,7 +66,17 @@ impl Storage {
                 notes        TEXT,
                 last_audited TEXT,
                 created_at   TEXT NOT NULL
-            );",
+            );
+            CREATE TABLE IF NOT EXISTS publish_snapshots (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                domain        TEXT NOT NULL,
+                note          TEXT,
+                mention_rate  REAL NOT NULL,
+                mention_count INTEGER NOT NULL,
+                total_queries INTEGER NOT NULL,
+                timestamp     TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_snapshots_domain ON publish_snapshots(domain, timestamp);",
         )?;
         Ok(Self { conn })
     }
