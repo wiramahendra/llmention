@@ -287,6 +287,78 @@ impl Storage {
         Ok(stats)
     }
 
+    // ── Publish snapshots ────────────────────────────────────────────────────
+
+    /// Record a publish checkpoint with the current mention rate.
+    pub fn record_publish_snapshot(
+        &self,
+        domain: &str,
+        note: Option<&str>,
+        mention_rate: f64,
+        mention_count: usize,
+        total_queries: usize,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO publish_snapshots
+             (domain, note, mention_rate, mention_count, total_queries, timestamp)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                domain,
+                note,
+                mention_rate,
+                mention_count as i64,
+                total_queries as i64,
+                Utc::now().to_rfc3339(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Returns all publish snapshots for a domain, newest first.
+    pub fn list_publish_snapshots(&self, domain: &str) -> Result<Vec<PublishSnapshot>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, domain, note, mention_rate, mention_count, total_queries, timestamp
+             FROM publish_snapshots WHERE domain = ?1 ORDER BY timestamp DESC",
+        )?;
+        let rows = stmt.query_map(params![domain], |row| {
+            Ok(PublishSnapshot {
+                id: row.get(0)?,
+                domain: row.get(1)?,
+                note: row.get(2)?,
+                mention_rate: row.get(3)?,
+                mention_count: row.get::<_, i64>(4)? as usize,
+                total_queries: row.get::<_, i64>(5)? as usize,
+                timestamp: row.get(6)?,
+            })
+        })?;
+        let mut snaps = Vec::new();
+        for r in rows {
+            snaps.push(r?);
+        }
+        Ok(snaps)
+    }
+
+    /// Returns the most recent mention stats for a domain (last 7 days).
+    pub fn current_mention_stats(&self, domain: &str) -> Result<(f64, usize, usize)> {
+        let since = Utc::now() - chrono::Duration::days(7);
+        let total: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM mentions WHERE domain=?1 AND timestamp>=?2",
+            params![domain, since.to_rfc3339()],
+            |r| r.get(0),
+        )?;
+        let mentioned: i64 = self.conn.query_row(
+            "SELECT SUM(mentioned) FROM mentions WHERE domain=?1 AND timestamp>=?2",
+            params![domain, since.to_rfc3339()],
+            |r| r.get::<_, Option<i64>>(0).map(|v| v.unwrap_or(0)),
+        )?;
+        let rate = if total > 0 {
+            (mentioned as f64 / total as f64) * 100.0
+        } else {
+            0.0
+        };
+        Ok((rate, mentioned as usize, total as usize))
+    }
+
     /// Deletes records older than `days` days. Returns number of rows deleted.
     pub fn prune_old(&self, days: u32) -> Result<usize> {
         let cutoff = Utc::now() - chrono::Duration::days(days as i64);
